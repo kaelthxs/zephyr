@@ -41,7 +41,7 @@ func main() {
 
     router := gin.Default()
     authMiddleware := auth.AuthMiddleware(cfg.JWTSecret)
-    user_handler.RegisterRoutes(router, userUC, authMiddleware)
+    user_handler.RegisterRoutes(router, userUC, authMiddleware, cfg)
 
     err = router.Run(":" + cfg.Port)
     if err != nil {
