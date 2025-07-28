@@ -1,0 +1,59 @@
+# === Go ===
+# Бинарники
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Временные файлы
+*.test
+*.out
+
+# Модули Go
+/vendor/
+
+# IDE и окружение
+.vscode/
+.idea/
+*.log
+
+# === Node / React / Vite / TypeScript ===
+
+# node_modules — главная помеха
+node_modules/
+
+# Сборка
+dist/
+build/
+out/
+
+# Логи
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Конфиги среды
+.env
+.env.local
+.env.*.local
+
+# Кэш
+.cache/
+.vite/
+.eslintcache
+
+# Трансляты TypeScript
+*.tsbuildinfo
+
+# IDE и редакторы
+.vscode/
+.idea/
+.DS_Store
+
+# Маковские штуки
+.DS_Store
+
+# Логи тестов
+coverage/
