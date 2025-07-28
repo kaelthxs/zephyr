@@ -4,11 +4,17 @@ import (
 	"log"
 	"net/http"
 	"zephyr-backend/internal/usecase"
-
 	"github.com/gin-gonic/gin"
+    "context"
+	"encoding/json"
+	"golang.org/x/oauth2"
+    "zephyr-backend/config"
+    "fmt"
+	yandexOAuth "zephyr-backend/infrastructure/auth/yandex"
+
 )
 
-func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.HandlerFunc) {
+func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.HandlerFunc, cfg *config.Config) {
     r.POST("/register", func(c *gin.Context) {
         var req struct {
             Username string `json:"username"`
@@ -121,5 +127,93 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
         }
         c.JSON(http.StatusOK, gin.H{"message": "email confirmed"})
     })
+
+
+
     
+    oauthConfig := &oauth2.Config{
+        ClientID:     cfg.YandexClientID,
+        ClientSecret: cfg.YandexClientSecret,
+        RedirectURL:  cfg.YandexRedirectURI,
+        Scopes:       []string{"login:email", "login:info"},
+        Endpoint:     yandexOAuth.YandexEndpoint,
+    }
+    
+    r.GET("/auth/yandex/login", func(c *gin.Context) {
+        url := oauthConfig.AuthCodeURL("state-zephyr")
+        c.Redirect(http.StatusTemporaryRedirect, url)
+    })
+    
+    r.GET("/auth/yandex/callback", func(c *gin.Context) {
+        fmt.Println("📥 callback пришёл")
+    
+        code := c.Query("code")
+        if code == "" {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "code not found"})
+            return
+        }
+        fmt.Println("🔐 code =", code)
+    
+        token, err := oauthConfig.Exchange(context.Background(), code)
+        if err != nil {
+            fmt.Println("❌ ошибка обмена токена:", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "token exchange failed"})
+            return
+        }
+    
+        client := oauthConfig.Client(context.Background(), token)
+        resp, err := client.Get("https://login.yandex.ru/info?format=json")
+        if err != nil {
+            fmt.Println("❌ ошибка запроса профиля:", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch user info"})
+            return
+        }
+        defer resp.Body.Close()
+        fmt.Println("✅ получили профиль")
+    
+        var userInfo struct {
+            Email      string `json:"default_email"`
+            Login      string `json:"login"`
+            FirstName  string `json:"first_name"`
+            LastName   string `json:"last_name"`
+            Birthday   string `json:"birthday"`
+            SexRaw     string `json:"sex"` // строка, не int
+            ID         string `json:"id"`
+        }
+        
+        gender := "не выбран"
+        switch userInfo.SexRaw {
+        case "1":
+            gender = "мужской"
+        case "2":
+            gender = "женский"
+        }
+        
+        if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+            fmt.Println("❌ ошибка парсинга json:", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "decode failed"})
+            return
+        }
+        fmt.Printf("👤 userInfo: %+v\n", userInfo)
+    
+        tokenStr, err := uc.LoginOrRegisterWithYandex(
+            userInfo.Email,
+            userInfo.Login,
+            userInfo.FirstName,
+            userInfo.LastName,
+            userInfo.Birthday,
+            gender,
+            userInfo.ID,
+        )
+        if err != nil {
+            fmt.Println("❌ ошибка логина/регистрации:", err)
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "login/register failed"})
+            return
+        }
+    
+        fmt.Println("🎫 токен:", tokenStr)
+        c.JSON(http.StatusOK, gin.H{"token": tokenStr})
+    })
+    
+
 }

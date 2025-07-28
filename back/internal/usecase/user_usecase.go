@@ -1,15 +1,17 @@
 package usecase
 
 import (
-    "zephyr-backend/internal/port/repository"
-    "fmt"
-    "math/rand"       // вот этого не хватает
-    "errors"          // и этого
-    "time"
-    "zephyr-backend/infrastructure/cache"
-    "zephyr-backend/infrastructure/sms"
-    "github.com/google/uuid"
-    "log"
+	"errors" // и этого
+	"fmt"
+	"log"
+	"math/rand" // вот этого не хватает
+	"time"
+	"zephyr-backend/infrastructure/cache"
+	"zephyr-backend/infrastructure/sms"
+	"zephyr-backend/internal/port/repository"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Mailer interface {
@@ -50,7 +52,19 @@ func generateRandomCode() string {
 
 func (uc *UserUseCase) Register(username, email, password, birth_date, phone_number string) error {
     hashed, _ := uc.auth.HashPassword(password)
-    return uc.repo.CreateUser(username, email, hashed, birth_date, phone_number)
+    return uc.repo.CreateUser(
+        username,
+        email,
+        hashed,
+        birth_date,
+        phone_number,
+        "", // firstName
+        "", // lastName
+        "мужской", // gender
+        "", // yandexID
+        "local", // oauthProvider
+    )
+    
 }
 
 func (uc *UserUseCase) Login(email, password string) (string, error) {
@@ -137,5 +151,52 @@ func (uc *UserUseCase) ConfirmEmail(code string) error {
 
     return nil
 }
+
+func (uc *UserUseCase) LoginOrRegisterWithYandex(
+	email, login, firstName, lastName, birthday, gender, yandexID string,
+) (string, error) {
+	user, err := uc.repo.GetByEmail(email)
+	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+		user = nil
+	} else if err != nil {
+		return "", err
+	}
+
+	// если пользователь не найден — регистрируем
+	if user == nil {
+		if birthday == "" {
+			birthday = "1900-01-01"
+		}
+
+		err = uc.repo.CreateUser(
+			login,
+			email,
+			"oauth_yandex_placeholder",
+			birthday,
+			"0000000000",
+			firstName,
+			lastName,
+			gender,
+			yandexID,
+			"yandex",
+		)
+		if err != nil {
+			return "", err
+		}
+
+		user, _ = uc.repo.GetByEmail(email)
+	}
+
+	// токен
+	token, err := uc.auth.GenerateToken(user.ID.String())
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+
+
 
 

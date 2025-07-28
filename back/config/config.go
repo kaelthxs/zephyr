@@ -25,6 +25,9 @@ type Config struct {
     SMTPPassword string
     SMTPFrom string
     AppBaseURL string
+    YandexClientID     string
+    YandexClientSecret string
+    YandexRedirectURI  string
 }
 
 func LoadConfig() (*Config, error) {
@@ -58,5 +61,9 @@ func LoadConfig() (*Config, error) {
         SMTPPassword: os.Getenv("SMTP_PASSWORD"),
         SMTPFrom: os.Getenv("SMTP_FROM"),
         AppBaseURL : os.Getenv("APP_BASE_URL"),
+        YandexClientID:     os.Getenv("YANDEX_CLIENT_ID"),
+        YandexClientSecret: os.Getenv("YANDEX_CLIENT_SECRET"),
+        YandexRedirectURI:  os.Getenv("YANDEX_REDIRECT_URI"),
+
     }, nil
 }
