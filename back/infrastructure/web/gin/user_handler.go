@@ -13,6 +13,55 @@ import (
     yandexOAuth "zephyr-backend/infrastructure/auth/yandex"
 )
 
+type AuthHandler struct {
+    UC *usecase.UserUseCase
+}
+
+func NewAuthHandler(uc *usecase.UserUseCase) *AuthHandler {
+    return &AuthHandler{UC: uc}
+}
+
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+    var req struct {
+        UserID       string `json:"user_id"`
+        RefreshToken string `json:"refresh_token"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+        return
+    }
+
+    token, refresh, err := h.UC.RefreshToken(req.UserID, req.RefreshToken)
+    if err != nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "access_token":  token,
+        "refresh_token": refresh,
+    })
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+    var req struct {
+        UserID       string `json:"user_id"`
+        RefreshToken string `json:"refresh_token"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+        return
+    }
+
+    err := h.UC.Logout(req.UserID, req.RefreshToken)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
+}
+
 func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.HandlerFunc, cfg *config.Config) {
     r.POST("/register", func(c *gin.Context) {
         var req struct {
@@ -45,13 +94,16 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
             return
         }
 
-        token, err := uc.Login(req.Email, req.Password)
+        accessToken, refreshToken, err := uc.Login(req.Email, req.Password)
         if err != nil {
             c.JSON(http.StatusUnauthorized, gin.H{"error": "login failed"})
             return
         }
 
-        c.JSON(http.StatusOK, gin.H{"token": token})
+        c.JSON(http.StatusOK, gin.H{
+            "access_token": accessToken,
+            "refresh_token": refreshToken,
+        })
     })
 
     authGroup := r.Group("/auth", authMiddleware)
@@ -78,7 +130,7 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
         }
         c.JSON(http.StatusOK, gin.H{"message": "code sent", "code": code})
     })
-    
+
     r.POST("/confirm-phone", func(c *gin.Context) {
         var req struct {
             Phone string `json:"phone"`
@@ -126,9 +178,6 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
         c.JSON(http.StatusOK, gin.H{"message": "email confirmed"})
     })
 
-
-
-    
     oauthConfig := &oauth2.Config{
         ClientID:     cfg.YandexClientID,
         ClientSecret: cfg.YandexClientSecret,
@@ -136,12 +185,12 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
         Scopes:       []string{"login:email", "login:info"},
         Endpoint:     yandexOAuth.YandexEndpoint,
     }
-    
+
     r.GET("/auth/yandex/login", func(c *gin.Context) {
         url := oauthConfig.AuthCodeURL("state-zephyr")
         c.Redirect(http.StatusTemporaryRedirect, url)
     })
-    
+
     r.GET("/auth/yandex/callback", func(c *gin.Context) {
         code := c.Query("code")
         if code == "" {
@@ -195,6 +244,8 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
         }
         c.JSON(http.StatusOK, gin.H{"token": tokenStr})
     })
-    
 
+    authHandler := NewAuthHandler(uc)
+    r.POST("/auth/refresh", authHandler.RefreshToken)
+    r.POST("/auth/logout", authHandler.Logout)
 }

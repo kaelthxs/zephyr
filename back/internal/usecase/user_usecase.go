@@ -73,17 +73,53 @@ func (uc *UserUseCase) Register(username, email, password, birth_date, phone_num
     )
 }
 
-func (uc *UserUseCase) Login(email, password string) (string, error) {
+func (uc *UserUseCase) Login(email, password string) (accessToken string, refreshToken string, err error) {
     user, err := uc.repo.GetByEmail(email)
     if err != nil {
-        return "", err
+        return "","", err
     }
     if !uc.auth.CheckPassword(password, user.Password) {
-        return "", errors.New("invalid credentials")
+        return "","", errors.New("invalid credentials")
     }
-    return uc.auth.GenerateToken(user.ID.String())
+
+    accessToken, err = uc.auth.GenerateToken(user.ID.String())
+    if err != nil {
+        return "", "", err
+    }
+
+    refreshToken = uuid.NewString()
+    err = uc.cache.SaveRefreshToken(user.ID.String(), refreshToken, 30*24*time.Hour)
+    if err != nil {
+        return "", "", err
+    }
+    return accessToken, refreshToken, nil
 }
 
+func (uc *UserUseCase) RefreshToken(userID, refreshToken string) (string, string, error) {
+	valid, err := uc.cache.ValidateRefreshToken(userID, refreshToken)
+	if err != nil || !valid {
+		return "", "", errors.New("invalid or expired refresh token")
+	}
+
+	_ = uc.cache.DeleteRefreshToken(userID, refreshToken)
+
+	newRefresh := uuid.New().String()
+	accessToken, err := uc.auth.GenerateToken(userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	err = uc.cache.SaveRefreshToken(userID, newRefresh, 30*24*time.Hour)
+	if err != nil {
+		return "", "", err
+	}
+
+	return accessToken, newRefresh, nil
+}
+
+func (uc *UserUseCase) Logout(userID, refreshToken string) error {
+	return uc.cache.DeleteRefreshToken(userID, refreshToken)
+}
 
 func (uc *UserUseCase) SendPhoneCode(phone string) (string, error) {
     code := fmt.Sprintf("%04d", rand.Intn(10000))

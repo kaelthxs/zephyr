@@ -65,4 +65,21 @@ func (r *RedisClient) DeleteEmailCode(email string) error {
     return err2
 }
 
+func (r *RedisClient) SaveRefreshToken(userID, token string, ttl time.Duration) error {
+	key := "refresh:" + userID + ":" + token
+	return r.Client.Set(r.Ctx, key, "1", ttl).Err()
+}
+
+func (r *RedisClient) ValidateRefreshToken(userID, token string) (bool, error) {
+	key := "refresh:" + userID + ":" + token
+	res, err := r.Client.Exists(r.Ctx, key).Result()
+	return res == 1, err
+}
+
+func (r *RedisClient) DeleteRefreshToken(userID, token string) error {
+	key := "refresh:" + userID + ":" + token
+	return r.Client.Del(r.Ctx, key).Err()
+}
+
+
 

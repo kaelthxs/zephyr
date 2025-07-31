@@ -28,6 +28,9 @@ type Config struct {
     YandexClientID     string
     YandexClientSecret string
     YandexRedirectURI  string
+    GoogleClientID     string
+    GoogleClientSecret string
+    GoogleRedirectURI  string
 }
 
 func LoadConfig() (*Config, error) {
