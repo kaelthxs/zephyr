@@ -6,26 +6,16 @@ import (
     "zephyr-backend/internal/repository"
 )
 
-// userRepo is a Postgres implementation of the repository.UserRepository interface.
-// It delegates all persistence operations to GORM. The struct and its methods
-// live in the infrastructure layer to keep storage details away from the
-// domain and use cases.
 type userRepo struct {
     db *gorm.DB
 }
 
-// NewUserRepository instantiates a new Postgres backed implementation of
-// repository.UserRepository. The returned repository is ready for use.
 func NewUserRepository(db *gorm.DB) repository.UserRepository {
     return &userRepo{db: db}
 }
 
-// CreateUser persists a new user into the database. Fields that are not
-// explicitly set are persisted as zero values. The email verification flag
-// defaults to false on creation.
 func (r *userRepo) CreateUser(
-    username, email, passwordHash, birthDate, phoneNumber, firstName, lastName, gender, yandexID, oauthProvider string,
-) error {
+    username, email, passwordHash, birthDate, phoneNumber, firstName, lastName, gender, oauthID, oauthProvider string, isVerifiedEmail bool) error {
     return r.db.Create(&domain.User{
         Username:       username,
         Email:          email,
@@ -35,7 +25,7 @@ func (r *userRepo) CreateUser(
         FirstName:      firstName,
         LastName:       lastName,
         Gender:         gender,
-        YandexID:       yandexID,
+        OauthID:       oauthID,
         OauthProvider:  oauthProvider,
         IsEmailVerified: false,
     }).Error

@@ -15,7 +15,7 @@ type User struct {
 	LastName  string `gorm:"column:last_name"`
 	Gender    string `gorm:"column:gender"`
 
-	YandexID      string `gorm:"column:yandex_id"`
+	OauthID      string `gorm:"column:oauth_id"`
 	OauthProvider string `gorm:"column:oauth_provider"`
 
 	IsPhoneVerified  bool `gorm:"column:is_phone_verified"`

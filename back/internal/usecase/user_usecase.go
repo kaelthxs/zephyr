@@ -1,17 +1,18 @@
 package usecase
 
 import (
-    "errors"
-    "fmt"
-    "math/rand"
-    "time"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math/rand"
+	"time"
 
-    "zephyr-backend/infrastructure/cache"
-    "zephyr-backend/infrastructure/sms"
-    "zephyr-backend/internal/repository"
+	"zephyr-backend/infrastructure/cache"
+	"zephyr-backend/infrastructure/sms"
+	"zephyr-backend/internal/repository"
 
-    "github.com/google/uuid"
-    "gorm.io/gorm"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -23,11 +24,11 @@ type Mailer interface {
 }
 
 type UserUseCase struct {
-    repo  repository.UserRepository
-    auth  repository.AuthService
-    cache *cache.RedisClient
-    sms   *sms.SmsClient
-    mailer Mailer
+    repo    repository.UserRepository
+    auth    repository.AuthService
+    cache   *cache.RedisClient
+    sms     *sms.SmsClient
+    mailer  Mailer
     baseURL string
 }
 
@@ -40,21 +41,20 @@ func NewUserUseCase(
     baseURL string,
 ) *UserUseCase {
     return &UserUseCase{
-        repo: repo,
-        auth: auth,
-        cache: cache,
-        sms: sms,
-        mailer: mailer,
+        repo:    repo,
+        auth:    auth,
+        cache:   cache,
+        sms:     sms,
+        mailer:  mailer,
         baseURL: baseURL,
     }
 }
-
 
 func generateRandomCode() string {
     return uuid.NewString()
 }
 
-func (uc *UserUseCase) Register(username, email, password, birth_date, phone_number string) error {
+func (uc *UserUseCase) Register(username, email, password, birth_date, phone_number string, IsEmailVerified bool) error {
     hashed, err := uc.auth.HashPassword(password)
     if err != nil {
         return err
@@ -67,19 +67,20 @@ func (uc *UserUseCase) Register(username, email, password, birth_date, phone_num
         phone_number,
         "",
         "",
-        "мужской",
+        "не выбран",
         "",
-        "local",
+        "",
+        IsEmailVerified,
     )
 }
 
 func (uc *UserUseCase) Login(email, password string) (accessToken string, refreshToken string, err error) {
     user, err := uc.repo.GetByEmail(email)
     if err != nil {
-        return "","", err
+        return "", "", err
     }
     if !uc.auth.CheckPassword(password, user.Password) {
-        return "","", errors.New("invalid credentials")
+        return "", "", errors.New("invalid credentials")
     }
 
     accessToken, err = uc.auth.GenerateToken(user.ID.String())
@@ -96,29 +97,29 @@ func (uc *UserUseCase) Login(email, password string) (accessToken string, refres
 }
 
 func (uc *UserUseCase) RefreshToken(userID, refreshToken string) (string, string, error) {
-	valid, err := uc.cache.ValidateRefreshToken(userID, refreshToken)
-	if err != nil || !valid {
-		return "", "", errors.New("invalid or expired refresh token")
-	}
+    valid, err := uc.cache.ValidateRefreshToken(userID, refreshToken)
+    if err != nil || !valid {
+        return "", "", errors.New("invalid or expired refresh token")
+    }
 
-	_ = uc.cache.DeleteRefreshToken(userID, refreshToken)
+    _ = uc.cache.DeleteRefreshToken(userID, refreshToken)
 
-	newRefresh := uuid.New().String()
-	accessToken, err := uc.auth.GenerateToken(userID)
-	if err != nil {
-		return "", "", err
-	}
+    newRefresh := uuid.New().String()
+    accessToken, err := uc.auth.GenerateToken(userID)
+    if err != nil {
+        return "", "", err
+    }
 
-	err = uc.cache.SaveRefreshToken(userID, newRefresh, 30*24*time.Hour)
-	if err != nil {
-		return "", "", err
-	}
+    err = uc.cache.SaveRefreshToken(userID, newRefresh, 30*24*time.Hour)
+    if err != nil {
+        return "", "", err
+    }
 
-	return accessToken, newRefresh, nil
+    return accessToken, newRefresh, nil
 }
 
 func (uc *UserUseCase) Logout(userID, refreshToken string) error {
-	return uc.cache.DeleteRefreshToken(userID, refreshToken)
+    return uc.cache.DeleteRefreshToken(userID, refreshToken)
 }
 
 func (uc *UserUseCase) SendPhoneCode(phone string) (string, error) {
@@ -131,7 +132,6 @@ func (uc *UserUseCase) SendPhoneCode(phone string) (string, error) {
     }
     return code, nil
 }
-
 
 func (uc *UserUseCase) ConfirmPhone(phone, code string) error {
     savedCode, err := uc.cache.Get("phone_code:" + phone)
@@ -156,7 +156,6 @@ func (uc *UserUseCase) SendEmailVerificationCode(email string) error {
     return uc.mailer.SendVerificationEmail(email, link)
 }
 
-
 func (uc *UserUseCase) ConfirmEmail(code string) error {
     email, err := uc.cache.GetEmailByCode(code)
     if err != nil {
@@ -169,15 +168,93 @@ func (uc *UserUseCase) ConfirmEmail(code string) error {
     return nil
 }
 
-func (uc *UserUseCase) LoginOrRegisterWithYandex(
-	email, login, firstName, lastName, birthday, gender, yandexID string,
-) (string, error) {
+type OAuthData struct {
+    Email           string `json:"email"`
+    Provider        string `json:"provider"`
+    OauthID      string `json:"oauth_id"`
+    IsVerifiedEmail bool   `json:"is_verified_email"`
+}
+
+
+func (uc *UserUseCase) StoreOAuthData(email, provider, oauthID string, verified bool) (string, error) {
+    token := uuid.New().String()
+
+    data := OAuthData{
+        Email:           email,
+        Provider:        provider,
+        OauthID:      oauthID,
+        IsVerifiedEmail: verified,
+    }
+
+    bytes, err := json.Marshal(data)
+    if err != nil {
+        return "", err
+    }
+
+    err = uc.cache.Set("oauth:"+token, string(bytes), time.Minute*10)
+    if err != nil {
+        return "", err
+    }
+
+    return token, nil
+}
+
+
+
+
+func (uc *UserUseCase) CompleteOAuthRegistration(oauthToken, login, phone, birthDate string) (string, string, error) {
+    raw, err := uc.cache.Get("oauth:" + oauthToken)
+    if err != nil || raw == "" {
+        return "", "", errors.New("invalid oauth data")
+    }
+
+    var data OAuthData
+    if err := json.Unmarshal([]byte(raw), &data); err != nil {
+        return "", "", errors.New("invalid oauth format")
+    }
+
+    err = uc.repo.CreateUser(
+        login,
+        data.Email,
+        "oauth_placeholder",
+        birthDate,
+        phone,
+        "", "", "не выбран",
+        data.OauthID,
+        data.Provider,
+        data.IsVerifiedEmail, // теперь подаём флаг верификации
+    )
+    if err != nil {
+        return "", "", err
+    }
+
+    user, err := uc.repo.GetByEmail(data.Email)
+    if err != nil {
+        return "", "", err
+    }
+
+    access, err := uc.auth.GenerateToken(user.ID.String())
+    if err != nil {
+        return "", "", err
+    }
+
+    refresh := uuid.New().String()
+    err = uc.cache.SaveRefreshToken(user.ID.String(), refresh, 30*24*time.Hour)
+    if err != nil {
+        return "", "", err
+    }
+
+    return access, refresh, nil
+}
+
+
+func (uc *UserUseCase) LoginOrRegisterWithYandex(email, login, firstName, lastName, birthday, gender, oauthID string, IsEmailVerified bool) (accessToken string, refreshToken string, err error) {
     user, err := uc.repo.GetByEmail(email)
     if err != nil {
         if errors.Is(err, gorm.ErrRecordNotFound) {
             user = nil
         } else {
-            return "", err
+            return "", "", err
         }
     }
     if user == nil {
@@ -193,20 +270,49 @@ func (uc *UserUseCase) LoginOrRegisterWithYandex(
             firstName,
             lastName,
             gender,
-            yandexID,
+            oauthID,
             "yandex",
+            IsEmailVerified,
         ); err != nil {
-            return "", err
+            return "", "", err
         }
         user, err = uc.repo.GetByEmail(email)
         if err != nil {
-            return "", err
+            return "", "", err
         }
     }
-    return uc.auth.GenerateToken(user.ID.String())
+    return accessToken, refreshToken, nil
 }
 
-
-
-
-
+func (uc *UserUseCase) LoginOrRegisterWithGoogle(email, login, firstName, lastName, birthday, gender, oauthID string, IsEmailVerified bool) (accessToken string, refreshToken string, err error) {
+    user, err := uc.repo.GetByEmail(email)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            user = nil
+        } else {
+            return "", "", err
+        }
+    }
+    if user == nil {
+        if err := uc.repo.CreateUser(
+            login,
+            email,
+            "oauth_google_placeholder",
+            "1900-01-01",
+            "0000000000",
+            firstName,
+            lastName,
+            gender,
+            oauthID,
+            "yandex",
+            IsEmailVerified,
+        ); err != nil {
+            return "", "", err
+        }
+        user, err = uc.repo.GetByEmail(email)
+        if err != nil {
+            return "", "", err
+        }
+    }
+    return accessToken, refreshToken, nil
+}

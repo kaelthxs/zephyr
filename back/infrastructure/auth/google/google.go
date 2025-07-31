@@ -6,7 +6,7 @@ import (
 
 var (
 	GoogleEndpoint = oauth2.Endpoint{
-		AuthURL:  "https://oauth.yandex.ru/authorize",
-		TokenURL: "https://oauth.yandex.ru/token",
+		AuthURL:  "https://accounts.google.com/o/oauth2/auth",
+		TokenURL: "https://oauth2.googleapis.com/token",
 	}
 )
