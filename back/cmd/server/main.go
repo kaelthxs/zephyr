@@ -5,13 +5,13 @@ import (
 
     "github.com/gin-gonic/gin"
     "zephyr-backend/config"
-    "zephyr-backend/infrastructure/db/postgres"
-    "zephyr-backend/infrastructure/web/gin"
-    "zephyr-backend/internal/usecase"
     "zephyr-backend/infrastructure/auth"
     "zephyr-backend/infrastructure/cache"
-    "zephyr-backend/infrastructure/sms"
+    "zephyr-backend/infrastructure/db/postgres"
     "zephyr-backend/infrastructure/mail"
+    "zephyr-backend/infrastructure/sms"
+    handler "zephyr-backend/infrastructure/web/gin"
+    "zephyr-backend/internal/usecase"
 )
 
 func main() {
@@ -41,7 +41,7 @@ func main() {
 
     router := gin.Default()
     authMiddleware := auth.AuthMiddleware(cfg.JWTSecret)
-    user_handler.RegisterRoutes(router, userUC, authMiddleware, cfg)
+    handler.RegisterRoutes(router, userUC, authMiddleware, cfg)
 
     err = router.Run(":" + cfg.Port)
     if err != nil {
