@@ -31,7 +31,6 @@ func (s *SmsClient) SendSms(to, message string) error {
     }
     defer resp.Body.Close()
 
-    // drain the body to allow reuse of connections
     _, err = ioutil.ReadAll(resp.Body)
     return err
 }

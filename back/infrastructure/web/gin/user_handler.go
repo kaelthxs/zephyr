@@ -1,6 +1,3 @@
-// Package handler exposes HTTP route registration for user related actions.
-// It belongs to the outer layer of the application and is responsible for
-// translating HTTP requests into appropriate use case calls.
 package handler
 
 import (
@@ -151,13 +148,11 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
             c.JSON(http.StatusBadRequest, gin.H{"error": "code not found"})
             return
         }
-        // exchange the authorization code for an access token
         token, err := oauthConfig.Exchange(context.Background(), code)
         if err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": "token exchange failed"})
             return
         }
-        // fetch user information from Yandex
         client := oauthConfig.Client(context.Background(), token)
         resp, err := client.Get("https://login.yandex.ru/info?format=json")
         if err != nil {
@@ -178,7 +173,6 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
             c.JSON(http.StatusInternalServerError, gin.H{"error": "decode failed"})
             return
         }
-        // map Yandex gender codes to internal representation
         gender := "не выбран"
         switch userInfo.SexRaw {
         case "1":
@@ -186,7 +180,6 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
         case "2":
             gender = "женский"
         }
-        // perform login or registration and generate a token
         tokenStr, err := uc.LoginOrRegisterWithYandex(
             userInfo.Email,
             userInfo.Login,

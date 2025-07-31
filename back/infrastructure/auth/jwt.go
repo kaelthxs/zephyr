@@ -6,16 +6,10 @@ import (
     "zephyr-backend/internal/repository"
 )
 
-// jwtService is a concrete implementation of repository.AuthService that
-// generates and verifies JWT tokens. It also delegates password hashing
-// and comparison to the bcrypt implementation defined in bcrypt.go.
 type jwtService struct {
     secret string
 }
 
-// NewService constructs a new JWT service that can be used to hash
-// passwords, check password hashes and generate JWT tokens. It returns
-// the interface type to keep callers decoupled from the concrete type.
 func NewService(secret string) repository.AuthService {
     return &jwtService{secret: secret}
 }

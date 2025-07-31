@@ -41,31 +41,24 @@ func (r *userRepo) CreateUser(
     }).Error
 }
 
-// GetByEmail returns the first user that matches the provided email. If no
-// user is found gorm.ErrRecordNotFound is returned.
 func (r *userRepo) GetByEmail(email string) (*domain.User, error) {
     var user domain.User
     err := r.db.Where("email = ?", email).First(&user).Error
     return &user, err
 }
 
-// GetByPhone returns the first user that matches the provided phone number.
 func (r *userRepo) GetByPhone(phone string) (*domain.User, error) {
     var user domain.User
     err := r.db.Where("phone_number = ?", phone).First(&user).Error
     return &user, err
 }
 
-// SetPhoneVerified sets the is_phone_verified flag to true for the user with
-// the provided phone number. It returns any error encountered.
 func (r *userRepo) SetPhoneVerified(phone string) error {
     return r.db.Model(&domain.User{}).
         Where("phone_number = ?", phone).
         Update("is_phone_verified", true).Error
 }
 
-// SetEmailVerified sets the is_email_verified flag to true for the user with
-// the provided email address.
 func (r *userRepo) SetEmailVerified(email string) error {
     return r.db.Model(&domain.User{}).
         Where("email = ?", email).

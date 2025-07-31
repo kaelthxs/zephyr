@@ -38,7 +38,6 @@ func (r *RedisClient) Delete(key string) error {
 }
 
 func (r *RedisClient) SetEmailCode(email, code string, expiration time.Duration) error {
-    // store both forward and reverse mappings for email verification codes
     if err := r.Client.Set(r.Ctx, "email_code:"+email, code, expiration).Err(); err != nil {
         return err
     }
