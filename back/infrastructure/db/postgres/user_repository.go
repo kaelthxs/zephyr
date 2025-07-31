@@ -1,63 +1,73 @@
 package postgres
 
 import (
-	"gorm.io/gorm"
-	"zephyr-backend/internal/domain"
+    "gorm.io/gorm"
+    "zephyr-backend/internal/domain"
+    "zephyr-backend/internal/repository"
 )
 
+// userRepo is a Postgres implementation of the repository.UserRepository interface.
+// It delegates all persistence operations to GORM. The struct and its methods
+// live in the infrastructure layer to keep storage details away from the
+// domain and use cases.
 type userRepo struct {
-	db *gorm.DB
-}
-func NewUserRepository(db *gorm.DB) *userRepo {
-	return &userRepo{db: db}
+    db *gorm.DB
 }
 
+// NewUserRepository instantiates a new Postgres backed implementation of
+// repository.UserRepository. The returned repository is ready for use.
+func NewUserRepository(db *gorm.DB) repository.UserRepository {
+    return &userRepo{db: db}
+}
+
+// CreateUser persists a new user into the database. Fields that are not
+// explicitly set are persisted as zero values. The email verification flag
+// defaults to false on creation.
 func (r *userRepo) CreateUser(
-	username, email, password, birthDate, phoneNumber, firstName, lastName, gender, yandexID, oauthProvider string,
+    username, email, passwordHash, birthDate, phoneNumber, firstName, lastName, gender, yandexID, oauthProvider string,
 ) error {
-	return r.db.Create(&domain.User{
-		Username:       username,
-		Email:          email,
-		Password:       password,
-		BirthDate:      birthDate,
-		PhoneNumber:    phoneNumber,
-		FirstName:      firstName,
-		LastName:       lastName,
-		Gender:         gender,
-		YandexID:       yandexID,
-		OauthProvider:  oauthProvider,
-		IsEmailVerified: true,
-	}).Error
+    return r.db.Create(&domain.User{
+        Username:       username,
+        Email:          email,
+        Password:       passwordHash,
+        BirthDate:      birthDate,
+        PhoneNumber:    phoneNumber,
+        FirstName:      firstName,
+        LastName:       lastName,
+        Gender:         gender,
+        YandexID:       yandexID,
+        OauthProvider:  oauthProvider,
+        IsEmailVerified: false,
+    }).Error
 }
 
-
-
+// GetByEmail returns the first user that matches the provided email. If no
+// user is found gorm.ErrRecordNotFound is returned.
 func (r *userRepo) GetByEmail(email string) (*domain.User, error) {
-	var user domain.User
-	err := r.db.Where("email = ?", email).First(&user).Error
-	return &user, err
+    var user domain.User
+    err := r.db.Where("email = ?", email).First(&user).Error
+    return &user, err
 }
 
-func (r *userRepo) SetPhoneVerificationCode(phone, code string) error {
-	return r.db.Model(&domain.User{}).
-		Where("phone_number = ?", phone).
-		Update("phone_verification_code", code).Error
-}
-
+// GetByPhone returns the first user that matches the provided phone number.
 func (r *userRepo) GetByPhone(phone string) (*domain.User, error) {
-	var user domain.User
-	err := r.db.Where("phone_number = ?", phone).First(&user).Error
-	return &user, err
+    var user domain.User
+    err := r.db.Where("phone_number = ?", phone).First(&user).Error
+    return &user, err
 }
 
+// SetPhoneVerified sets the is_phone_verified flag to true for the user with
+// the provided phone number. It returns any error encountered.
 func (r *userRepo) SetPhoneVerified(phone string) error {
-	return r.db.Model(&domain.User{}).
-		Where("phone_number = ?", phone).
-		Update("is_phone_verified", true).Error
+    return r.db.Model(&domain.User{}).
+        Where("phone_number = ?", phone).
+        Update("is_phone_verified", true).Error
 }
 
+// SetEmailVerified sets the is_email_verified flag to true for the user with
+// the provided email address.
 func (r *userRepo) SetEmailVerified(email string) error {
-	return r.db.Model(&domain.User{}).
-		Where("email = ?", email).
-		Update("is_email_verified", true).Error
+    return r.db.Model(&domain.User{}).
+        Where("email = ?", email).
+        Update("is_email_verified", true).Error
 }

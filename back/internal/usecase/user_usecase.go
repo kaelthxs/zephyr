@@ -1,18 +1,23 @@
 package usecase
 
 import (
-	"errors" // и этого
-	"fmt"
-	"log"
-	"math/rand" // вот этого не хватает
-	"time"
-	"zephyr-backend/infrastructure/cache"
-	"zephyr-backend/infrastructure/sms"
-	"zephyr-backend/internal/port/repository"
+    "errors"
+    "fmt"
+    "math/rand"
+    "time"
 
-	"github.com/google/uuid"
-	"gorm.io/gorm"
+    "zephyr-backend/infrastructure/cache"
+    "zephyr-backend/infrastructure/sms"
+    "zephyr-backend/internal/repository"
+
+    "github.com/google/uuid"
+    "gorm.io/gorm"
 )
+
+// init seeds the random number generator used for generating verification codes.
+func init() {
+    rand.Seed(time.Now().UnixNano())
+}
 
 type Mailer interface {
     SendVerificationEmail(email, link string) error
@@ -51,50 +56,51 @@ func generateRandomCode() string {
 }
 
 func (uc *UserUseCase) Register(username, email, password, birth_date, phone_number string) error {
-    hashed, _ := uc.auth.HashPassword(password)
+    // hash the provided plain text password. If hashing fails we return the error
+    hashed, err := uc.auth.HashPassword(password)
+    if err != nil {
+        return err
+    }
+    // persist a new user with default values for optional fields
     return uc.repo.CreateUser(
         username,
         email,
         hashed,
         birth_date,
         phone_number,
-        "", // firstName
-        "", // lastName
-        "мужской", // gender
-        "", // yandexID
-        "local", // oauthProvider
+        "",
+        "",
+        "мужской",
+        "",
+        "local",
     )
-    
 }
 
 func (uc *UserUseCase) Login(email, password string) (string, error) {
-    fmt.Println("⚡️ Вызвался usecase.Login")
-
     user, err := uc.repo.GetByEmail(email)
-    if err != nil || !uc.auth.CheckPassword(password, user.Password) {
-        fmt.Println("⛔️ Ошибка в логине:", err)
+    if err != nil {
         return "", err
     }
-
-    token, err := uc.auth.GenerateToken(user.ID.String())
-    fmt.Println("🎫 Токен из auth:", token)
-
-    return token, err
+    // verify the provided password against the stored hash
+    if !uc.auth.CheckPassword(password, user.Password) {
+        return "", errors.New("invalid credentials")
+    }
+    // generate a JWT token for the authenticated user
+    return uc.auth.GenerateToken(user.ID.String())
 }
 
 
 func (uc *UserUseCase) SendPhoneCode(phone string) (string, error) {
+    // generate a 4‑digit numeric code
     code := fmt.Sprintf("%04d", rand.Intn(10000))
-    err := uc.cache.Set("phone_code:"+phone, code, 5*time.Minute)
-    if err != nil {
+    // store the code in cache with a 5 minute expiry
+    if err := uc.cache.Set("phone_code:"+phone, code, 5*time.Minute); err != nil {
         return "", err
     }
-
-    err = uc.sms.SendSms(phone, "Ваш код подтверждения: "+code)
-    if err != nil {
+    // send the code via the SMS client
+    if err := uc.sms.SendSms(phone, "Ваш код подтверждения: "+code); err != nil {
         return "", err
     }
-
     return code, nil
 }
 
@@ -107,30 +113,24 @@ func (uc *UserUseCase) ConfirmPhone(phone, code string) error {
     if savedCode != code {
         return errors.New("wrong code")
     }
-    err = uc.repo.SetPhoneVerified(phone)
-    if err != nil {
+    // mark the phone as verified in the persistent store
+    if err := uc.repo.SetPhoneVerified(phone); err != nil {
         return err
     }
+    // remove the code from cache
     return uc.cache.Delete("phone_code:" + phone)
 }
 
 func (uc *UserUseCase) SendEmailVerificationCode(email string) error {
     code := generateRandomCode()
-    err := uc.cache.SetEmailCode(email, code, time.Hour)
-    if err != nil {
-        log.Printf("Redis set error: %v", err)
+    // associate the email with the generated code in cache
+    if err := uc.cache.SetEmailCode(email, code, time.Hour); err != nil {
         return err
     }
-
+    // build a verification link using the base URL
     link := fmt.Sprintf("%s/verify-email?code=%s", uc.baseURL, code)
-
-    err = uc.mailer.SendVerificationEmail(email, link)
-    if err != nil {
-        log.Printf("SMTP send error: %v", err)
-        return err
-    }
-
-    return nil
+    // send the email via the mailer implementation
+    return uc.mailer.SendVerificationEmail(email, link)
 }
 
 
@@ -139,61 +139,55 @@ func (uc *UserUseCase) ConfirmEmail(code string) error {
     if err != nil {
         return err
     }
-
-    err = uc.repo.SetEmailVerified(email)
-    if err != nil {
+    // mark the email as verified in the persistent store
+    if err := uc.repo.SetEmailVerified(email); err != nil {
         return err
     }
-
-    if err := uc.cache.DeleteEmailCode(email); err != nil {
-        log.Printf("Warning: failed to delete email code from cache for %s: %v", email, err)
-    }
-
+    // remove both forward and reverse mappings from cache; ignore errors
+    _ = uc.cache.DeleteEmailCode(email)
     return nil
 }
 
 func (uc *UserUseCase) LoginOrRegisterWithYandex(
 	email, login, firstName, lastName, birthday, gender, yandexID string,
 ) (string, error) {
-	user, err := uc.repo.GetByEmail(email)
-	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
-		user = nil
-	} else if err != nil {
-		return "", err
-	}
-
-	// если пользователь не найден — регистрируем
-	if user == nil {
-		if birthday == "" {
-			birthday = "1900-01-01"
-		}
-
-		err = uc.repo.CreateUser(
-			login,
-			email,
-			"oauth_yandex_placeholder",
-			birthday,
-			"0000000000",
-			firstName,
-			lastName,
-			gender,
-			yandexID,
-			"yandex",
-		)
-		if err != nil {
-			return "", err
-		}
-
-		user, _ = uc.repo.GetByEmail(email)
-	}
-
-	// токен
-	token, err := uc.auth.GenerateToken(user.ID.String())
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
+    user, err := uc.repo.GetByEmail(email)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            user = nil
+        } else {
+            return "", err
+        }
+    }
+    // if the user does not exist, register a new account using the
+    // information returned from Yandex. Some defaults are applied
+    // when data is missing.
+    if user == nil {
+        if birthday == "" {
+            birthday = "1900-01-01"
+        }
+        if err := uc.repo.CreateUser(
+            login,
+            email,
+            "oauth_yandex_placeholder",
+            birthday,
+            "0000000000",
+            firstName,
+            lastName,
+            gender,
+            yandexID,
+            "yandex",
+        ); err != nil {
+            return "", err
+        }
+        // reload the user after creation
+        user, err = uc.repo.GetByEmail(email)
+        if err != nil {
+            return "", err
+        }
+    }
+    // generate a JWT token for the (existing or newly created) user
+    return uc.auth.GenerateToken(user.ID.String())
 }
 
 

@@ -1,17 +1,19 @@
-package user_handler
+// Package handler exposes HTTP route registration for user related actions.
+// It belongs to the outer layer of the application and is responsible for
+// translating HTTP requests into appropriate use case calls.
+package handler
 
 import (
-	"log"
-	"net/http"
-	"zephyr-backend/internal/usecase"
-	"github.com/gin-gonic/gin"
     "context"
-	"encoding/json"
-	"golang.org/x/oauth2"
-    "zephyr-backend/config"
-    "fmt"
-	yandexOAuth "zephyr-backend/infrastructure/auth/yandex"
+    "encoding/json"
+    "net/http"
 
+    "github.com/gin-gonic/gin"
+    "golang.org/x/oauth2"
+
+    "zephyr-backend/config"
+    "zephyr-backend/internal/usecase"
+    yandexOAuth "zephyr-backend/infrastructure/auth/yandex"
 )
 
 func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.HandlerFunc, cfg *config.Config) {
@@ -78,7 +80,6 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
             return
         }
         c.JSON(http.StatusOK, gin.H{"message": "code sent", "code": code})
-        log.Printf("Код для подтверждения телефона: " + code + " Для номера ", req.Phone)
     })
     
     r.POST("/confirm-phone", func(c *gin.Context) {
@@ -145,42 +146,39 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
     })
     
     r.GET("/auth/yandex/callback", func(c *gin.Context) {
-        fmt.Println("📥 callback пришёл")
-    
         code := c.Query("code")
         if code == "" {
             c.JSON(http.StatusBadRequest, gin.H{"error": "code not found"})
             return
         }
-        fmt.Println("🔐 code =", code)
-    
+        // exchange the authorization code for an access token
         token, err := oauthConfig.Exchange(context.Background(), code)
         if err != nil {
-            fmt.Println("❌ ошибка обмена токена:", err)
             c.JSON(http.StatusInternalServerError, gin.H{"error": "token exchange failed"})
             return
         }
-    
+        // fetch user information from Yandex
         client := oauthConfig.Client(context.Background(), token)
         resp, err := client.Get("https://login.yandex.ru/info?format=json")
         if err != nil {
-            fmt.Println("❌ ошибка запроса профиля:", err)
             c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch user info"})
             return
         }
         defer resp.Body.Close()
-        fmt.Println("✅ получили профиль")
-    
         var userInfo struct {
-            Email      string `json:"default_email"`
-            Login      string `json:"login"`
-            FirstName  string `json:"first_name"`
-            LastName   string `json:"last_name"`
-            Birthday   string `json:"birthday"`
-            SexRaw     string `json:"sex"` // строка, не int
-            ID         string `json:"id"`
+            Email     string `json:"default_email"`
+            Login     string `json:"login"`
+            FirstName string `json:"first_name"`
+            LastName  string `json:"last_name"`
+            Birthday  string `json:"birthday"`
+            SexRaw    string `json:"sex"`
+            ID        string `json:"id"`
         }
-        
+        if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "decode failed"})
+            return
+        }
+        // map Yandex gender codes to internal representation
         gender := "не выбран"
         switch userInfo.SexRaw {
         case "1":
@@ -188,14 +186,7 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
         case "2":
             gender = "женский"
         }
-        
-        if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
-            fmt.Println("❌ ошибка парсинга json:", err)
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "decode failed"})
-            return
-        }
-        fmt.Printf("👤 userInfo: %+v\n", userInfo)
-    
+        // perform login or registration and generate a token
         tokenStr, err := uc.LoginOrRegisterWithYandex(
             userInfo.Email,
             userInfo.Login,
@@ -206,12 +197,9 @@ func RegisterRoutes(r *gin.Engine, uc *usecase.UserUseCase, authMiddleware gin.H
             userInfo.ID,
         )
         if err != nil {
-            fmt.Println("❌ ошибка логина/регистрации:", err)
             c.JSON(http.StatusInternalServerError, gin.H{"error": "login/register failed"})
             return
         }
-    
-        fmt.Println("🎫 токен:", tokenStr)
         c.JSON(http.StatusOK, gin.H{"token": tokenStr})
     })
     

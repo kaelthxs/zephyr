@@ -1,11 +1,10 @@
 package cache
 
 import (
-	"context"
-	"log"
-	"time"
+    "context"
+    "time"
 
-	"github.com/redis/go-redis/v9"
+    "github.com/redis/go-redis/v9"
 )
 
 type RedisClient struct {
@@ -39,16 +38,14 @@ func (r *RedisClient) Delete(key string) error {
 }
 
 func (r *RedisClient) SetEmailCode(email, code string, expiration time.Duration) error {
-    err := r.Client.Set(r.Ctx, "email_code:"+email, code, expiration).Err()
-	log.Printf("code ----- " + code, "email --- -- - - " + email)
-    if err != nil {
+    // store both forward and reverse mappings for email verification codes
+    if err := r.Client.Set(r.Ctx, "email_code:"+email, code, expiration).Err(); err != nil {
         return err
     }
     return r.Client.Set(r.Ctx, "email_code_reverse:"+code, email, expiration).Err()
 }
 
 func (r *RedisClient) GetEmailByCode(code string) (string, error) {
-	log.Printf("codeDSFSKDJNFKHJSDFKJHSDHJKF ----- " + code, "email --- -- - - ")
     return r.Client.Get(r.Ctx, "email_code_reverse:"+code).Result()
 }
 
@@ -63,12 +60,10 @@ func (r *RedisClient) DeleteEmailCode(email string) error {
 
     err1 := r.Client.Del(r.Ctx, "email_code:"+email).Err()
     err2 := r.Client.Del(r.Ctx, "email_code_reverse:"+code).Err()
-
-    if err1 != nil || err2 != nil {
-        log.Printf("Warning: failed to delete email verification keys: %v %v", err1, err2)
+    if err1 != nil {
+        return err1
     }
-
-    return nil
+    return err2
 }
 
 
