@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type AuthUser struct {
+type User struct {
 	ID       uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 	Username string    `gorm:"column:username"`
 	Email    string    `gorm:"column:email"`

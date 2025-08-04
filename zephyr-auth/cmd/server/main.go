@@ -2,7 +2,11 @@ package main
 
 import (
 	"log"
+	handler "zephyr-auth/internal/delivery/http"
+	"zephyr-auth/internal/infrastructure/auth"
 	"zephyr-auth/internal/infrastructure/redis"
+	"zephyr-auth/internal/usecase"
+	"zephyr-auth/pkg"
 
 	"github.com/gin-gonic/gin"
 	"zephyr-auth/config"
@@ -25,12 +29,15 @@ func main() {
 		log.Fatalf("Error connecting to redis: %v", err)
 	}
 
-	log.Printf("fsdlkdsfajjsdkfjoasfdoijadsfoij")
-	log.Print(db)
-
-	log.Print(redisClient)
+	authRepo := auth.NewAuthRepository(db)
+	hashService := &pkg.HashServiceImpl{}
+	jwtService := &pkg.JWTServiceImpl{}
+	authUseCase := usecase.NewAuthUseCase(authRepo, hashService, jwtService, redisClient)
 
 	router := gin.Default()
+
+	handler.RegisterAuthRoutes(router, authUseCase)
+
 	if err := router.Run(":" + cfg.Port); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
