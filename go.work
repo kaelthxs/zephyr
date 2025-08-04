@@ -1,0 +1,11 @@
+go 1.23.11
+
+use (
+	./zephyr-auth
+	./zephyr-bff
+	./zephyr-chat
+	./zephyr-common
+	./zephyr-notifications
+	./zephyr-post
+	./zephyr-user
+)

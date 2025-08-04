@@ -35,12 +35,12 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Конфиги среды
-.env
+zephyr-auth/cmd/server/.env
 .env.local
 .env.*.local
 
 # Кэш
-.cache/
+.redis/
 .vite/
 .eslintcache
 
