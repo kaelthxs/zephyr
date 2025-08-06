@@ -14,7 +14,7 @@ func ToAuthUserFromRegisterDTO(d *dto.UserRegisterRequestDTO) *entity.User {
 		BirthDate:       parseBirthDate(d.BirthDate),
 		Gender:          d.Gender,
 		Pronouns:        d.Pronouns,
-		IsEmailVerified: nil,
+		IsEmailVerified: d.IsEmailVerified,
 	}
 }
 
@@ -24,7 +24,7 @@ func parseBirthDate(birthDate *string) *time.Time {
 	}
 	parsed, err := time.Parse("2006-01-02", *birthDate)
 	if err != nil {
-		return nil // Or handle parse errors if needed
+		return nil
 	}
 	return &parsed
 }

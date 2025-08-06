@@ -17,6 +17,26 @@ func NewAuthHandler(authUseCase *usecase.AuthUseCase) *AuthHandler {
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
+	var req dto.UserLoginDTO
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid credentials"})
+		return
+	}
+
+	tokens, err := h.AuthUseCase.Login(req)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": err,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"accessToken":  tokens.AccessToken,
+		"refreshToken": tokens.RefreshToken,
+	})
 
 }
 
@@ -38,6 +58,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, minimalUser)
 }
 
-func (h *AuthHandler) Logout(c *gin.Context) {
+func (h *AuthHandler) Logout() {
 
 }
