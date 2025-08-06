@@ -126,3 +126,8 @@ func (a *AuthUseCase) RefreshToken(providedRefreshToken string) (*dto.AuthRespon
 	}, nil
 
 }
+
+func (a *AuthUseCase) Logout(refreshToken string) error {
+	key := "refresh:" + refreshToken
+	return a.RedisClient.Client.Del(a.RedisClient.Ctx, key).Err()
+}

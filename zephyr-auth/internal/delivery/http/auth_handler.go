@@ -27,17 +27,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": err,
+			"message": err.Error(),
 		})
 		return
 	}
+
+	c.SetCookie("refresh_token", tokens.RefreshToken, 60*60*24*30, "/", "localhost", false, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":      true,
 		"accessToken":  tokens.AccessToken,
 		"refreshToken": tokens.RefreshToken,
 	})
-
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -58,6 +59,38 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, minimalUser)
 }
 
-func (h *AuthHandler) Logout() {
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	var req dto.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
 
+	tokens, err := h.AuthUseCase.RefreshToken(req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.SetCookie("refresh_token", tokens.RefreshToken, 60*60*24*30, "/", "localhost", false, true)
+
+	c.JSON(http.StatusOK, tokens)
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "refresh token missing"})
+		return
+	}
+
+	err = h.AuthUseCase.Logout(refreshToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "logout failed"})
+		return
+	}
+
+	c.SetCookie("refresh_token", "", -1, "/", "localhost", false, true)
+
+	c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
 }
